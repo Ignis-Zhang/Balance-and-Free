@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import "./App.css";
+import { apiFetch, clearToken, getToken, login, register, type ApiUser } from "./api";
 
 type Todo = {
   id: number;
@@ -118,6 +119,13 @@ const calendarWeeks = Array.from({ length: 5 }, (_, week) =>
 );
 
 function App() {
+  const [user, setUser] = useState<ApiUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authError, setAuthError] = useState("");
   const [activeNav, setActiveNav] = useState("工作台");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [todos, setTodos] = useState(initialTodos);
@@ -137,6 +145,33 @@ function App() {
   const [modalTodoType, setModalTodoType] =
     useState<ScheduleItem["tone"]>("coral");
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) { setAuthReady(true); return; }
+    Promise.all([
+      apiFetch<{ schedules: ScheduleItem[] }>("/schedules"),
+      apiFetch<{ todos: Array<Todo & { completed: boolean }> }>("/todos"),
+    ]).then(([scheduleResult, todoResult]) => {
+      setScheduleItems(scheduleResult.schedules);
+      setTodos(todoResult.todos.map((todo) => ({ ...todo, done: todo.completed })));
+      setUser({ id: 0, email: "", display_name: "用户" });
+    }).catch(() => clearToken()).finally(() => setAuthReady(true));
+  }, []);
+
+  const submitAuth = async (event: FormEvent) => {
+    event.preventDefault();
+    setAuthError("");
+    try {
+      const nextUser = authMode === "login" ? await login(authEmail, authPassword) : await register(authEmail, authPassword, authName);
+      setUser(nextUser);
+      if (authMode === "register") { setScheduleItems([]); setTodos([]); }
+      const scheduleResult = await apiFetch<{ schedules: ScheduleItem[] }>("/schedules");
+      const todoResult = await apiFetch<{ todos: Array<Todo & { completed: boolean }> }>("/todos");
+      setScheduleItems(scheduleResult.schedules);
+      setTodos(todoResult.todos.map((todo) => ({ ...todo, done: todo.completed })));
+    } catch (error) { setAuthError(error instanceof Error ? error.message : "操作失败"); }
+  };
 
   const setSelectedDay = (day: number) => {
     setSelectedDayState(day);
@@ -163,9 +198,11 @@ function App() {
     if (!target) return;
     if (target.done) {
       setTodos((current) => current.map((todo) => (todo.id === id ? { ...todo, done: false } : todo)));
+      void apiFetch(`/todos/${id}`, { method: "PATCH", body: JSON.stringify({ completed: false }) });
       return;
     }
     setTodos((current) => current.map((todo) => (todo.id === id ? { ...todo, done: true } : todo)));
+    void apiFetch(`/todos/${id}`, { method: "PATCH", body: JSON.stringify({ completed: true }) });
     setAnimatingTodoIds((current) => new Set(current).add(id));
     window.setTimeout(() => {
       setTodos((current) => current.filter((todo) => todo.id !== id));
@@ -190,6 +227,7 @@ function App() {
         tone: "blue",
       },
     ]);
+    void apiFetch<{ todo: Todo }>("/todos", { method: "POST", body: JSON.stringify({ title, meta: "今天 · 待安排", tone: "blue" }) });
     setNewTodo("");
   };
 
@@ -198,9 +236,11 @@ function App() {
     if (!title) return;
     const day = Number(modalTodoDate.slice(-2));
     const detail = modalTodoType === "coral" ? "工作安排" : modalTodoType === "blue" ? "会议沟通" : "个人生活";
+    const payload = { year: Number(modalTodoDate.slice(0, 4)), month: Number(modalTodoDate.slice(5, 7)), day, time: modalTodoTime, title, detail, tone: modalTodoType };
     setScheduleItems((current) => editingScheduleId === null
-        ? [...current, { id: Date.now(), year: Number(modalTodoDate.slice(0, 4)), month: Number(modalTodoDate.slice(5, 7)), day, time: modalTodoTime, title, detail, tone: modalTodoType }]
-      : current.map((item) => item.id === editingScheduleId ? { ...item, year: Number(modalTodoDate.slice(0, 4)), month: Number(modalTodoDate.slice(5, 7)), day, time: modalTodoTime, title, detail, tone: modalTodoType } : item));
+        ? [...current, { id: Date.now(), ...payload }]
+      : current.map((item) => item.id === editingScheduleId ? { ...item, ...payload } : item));
+    void apiFetch(editingScheduleId === null ? "/schedules" : `/schedules/${editingScheduleId}`, { method: editingScheduleId === null ? "POST" : "PUT", body: JSON.stringify(payload) });
     setSelectedYear(Number(modalTodoDate.slice(0, 4)));
     setSelectedMonth(Number(modalTodoDate.slice(5, 7)));
     setCalendarYear(Number(modalTodoDate.slice(0, 4)));
@@ -237,7 +277,11 @@ function App() {
   const deleteSchedule = (id: number) => {
     if (!window.confirm("确定要删除这条日程吗？")) return;
     setScheduleItems((current) => current.filter((item) => item.id !== id));
+    void apiFetch(`/schedules/${id}`, { method: "DELETE" });
   };
+
+  if (!authReady) return <div className="auth-loading">正在连接工作区...</div>;
+  if (!user) return <main className="auth-page"><form className="auth-card" onSubmit={submitAuth}><span className="modal-symbol">◒</span><p className="eyebrow">WORK LIFE BALANCE</p><h1>{authMode === "login" ? "登录你的工作区" : "创建工作区"}</h1><p className="auth-subtitle">{authMode === "login" ? "登录后，你的日程和待办会自动保存。" : "创建账户，开始和团队一起协作。"}</p>{authMode === "register" && <input value={authName} onChange={(event) => setAuthName(event.target.value)} placeholder="你的名字" required /> }<input type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="邮箱" required /><input type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="密码（至少 8 位）" minLength={8} required />{authError && <p className="auth-error">{authError}</p>}<button className="primary-button auth-submit" type="submit">{authMode === "login" ? "登录" : "注册并开始使用"}</button><button className="auth-switch" type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "还没有账户？创建一个" : "已有账户？返回登录"}</button></form></main>;
 
   const renderTodoList = () => (
     <article className="todo-card full-card">
@@ -649,6 +693,7 @@ function App() {
             </span>
             <span className="more">···</span>
           </div>
+          <button className="logout-button" onClick={() => { clearToken(); setUser(null); }}>退出登录</button>
         </div>
       </aside>
 
