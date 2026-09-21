@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import "./App.css";
-import { apiFetch, clearToken, getToken, login, register, type ApiUser } from "./api";
+import { apiFetch, clearToken, getCurrentUser, getToken, login, register, type ApiUser } from "./api";
 
 type Todo = {
   id: number;
@@ -155,7 +155,7 @@ function App() {
     ]).then(([scheduleResult, todoResult]) => {
       setScheduleItems(scheduleResult.schedules);
       setTodos(todoResult.todos.map((todo) => ({ ...todo, done: todo.completed })));
-      setUser({ id: 0, email: "", display_name: "用户" });
+      return getCurrentUser().then(setUser);
     }).catch(() => clearToken()).finally(() => setAuthReady(true));
   }, []);
 
@@ -661,9 +661,9 @@ function App() {
         </div>
         <button className="sidebar-toggle" aria-label={isSidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => setIsSidebarCollapsed((current) => !current)}>{isSidebarCollapsed ? "›" : "‹"}</button>
         <div className="workspace-switcher">
-          <span className="avatar avatar-small">林</span>
+          <span className="avatar avatar-small">{user?.display_name.slice(0, 1)}</span>
           <span>
-            <strong>林晓的空间</strong>
+            <strong>{user?.display_name}的空间</strong>
             <small>个人工作区</small>
           </span>
           <span className="chevron">⌄</span>
@@ -686,9 +686,9 @@ function App() {
             <span className="nav-icon">⚙</span>设置
           </button>
           <div className="profile">
-            <span className="avatar">林</span>
+            <span className="avatar">{user?.display_name.slice(0, 1)}</span>
             <span>
-              <strong>林晓</strong>
+              <strong>{user?.display_name}</strong>
               <small>专注工作中</small>
             </span>
             <span className="more">···</span>
@@ -725,7 +725,7 @@ function App() {
                 <div>
                   <p className="eyebrow">MONDAY, SEPTEMBER 21</p>
                   <h1>
-                    下午好，林晓 <span>✦</span>
+                    下午好，{user?.display_name} <span>✦</span>
                   </h1>
                   <p className="welcome-copy">
                     把注意力放在重要的事情上，剩下的交给我。

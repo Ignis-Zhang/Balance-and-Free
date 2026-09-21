@@ -56,6 +56,12 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ user: { id: user.id, email: user.email, display_name: user.display_name }, token: issueToken(user.id) })
 })
 
+app.get('/api/auth/me', auth, async (req: AuthRequest, res) => {
+  const result = await pool.query('SELECT id, email, display_name FROM users WHERE id = $1', [req.userId])
+  if (!result.rows[0]) return res.status(404).json({ error: '用户不存在' })
+  res.json({ user: result.rows[0] })
+})
+
 app.get('/api/schedules', auth, async (req: AuthRequest, res) => {
   const result = await pool.query('SELECT id, year, month, day, time, title, detail, tone FROM schedules WHERE workspace_id = $1 ORDER BY year, month, day, time', [req.workspaceId])
   res.json({ schedules: result.rows })

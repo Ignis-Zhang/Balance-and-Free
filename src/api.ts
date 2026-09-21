@@ -31,3 +31,8 @@ export async function register(email: string, password: string, displayName: str
   setToken(result.token)
   return result.user
 }
+
+export async function getCurrentUser() {
+  const result = await apiFetch<{ user: ApiUser }>('/auth/me')
+  return result.user
+}
