@@ -49,3 +49,13 @@ CREATE TABLE IF NOT EXISTS todos (
 
 CREATE INDEX IF NOT EXISTS schedules_workspace_date_idx ON schedules(workspace_id, year, month, day);
 CREATE INDEX IF NOT EXISTS todos_workspace_idx ON todos(workspace_id, completed);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worklife') THEN
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO worklife;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO worklife;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO worklife;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO worklife;
+  END IF;
+END $$;
