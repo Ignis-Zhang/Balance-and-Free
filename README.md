@@ -41,7 +41,7 @@ GitHub 只托管源码，云服务器上只放运行产物（前端静态文件 
 
 1. 构建 `dist/` 与 `dist-server/index.js`，并**校验后端产物包含 `/api/auth/me`**；
 2. 前端上传到 `/var/www/work-life-balance/dist`（先传 `dist-next` 再原子切换，旧版保留为 `dist-prev` 便于回滚）；
-3. 后端备份为 `server/index.js.bak-<时间戳>` 后覆盖上传，并做 md5 一致性校验；
+3. 后端备份为 `server/index.js.bak-<时间戳>` 后覆盖上传，并做 md5 一致性校验（自动只保留最近 5 份备份）；
 4. `systemctl restart work-life-balance-api`；
 5. 自检 `/api/health`、`/api/auth/me`（预期 401，若为 404 说明后端版本落后会直接报错中断）以及线上前端产物与本地构建的 md5。
 

@@ -141,6 +141,8 @@ if [ "${ONLY}" != "frontend" ]; then
   info "步骤 3/5 发布后端 → ${API_DIR}/server/index.js"
   remote "cp -p ${API_DIR}/server/index.js ${API_DIR}/server/index.js.bak-${STAMP}"
   ok "已备份线上产物 → server/index.js.bak-${STAMP}"
+  remote "ls -1t ${API_DIR}/server/index.js.bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f; ls -1t ${API_DIR}/server/index.js.bak-* 2>/dev/null | wc -l"
+  ok "备份清理完成（只保留最近 5 份）"
   run scp "${SCP_OPTS[@]}" dist-server/index.js "${TARGET}:${API_DIR}/server/index.js"
   if [ "${DRY_RUN}" = 0 ]; then
     LOCAL_MD5="$(md5of dist-server/index.js)"
