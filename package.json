@@ -7,8 +7,9 @@
     "dev": "vite",
     "server:dev": "tsx server/index.ts",
     "server:build": "tsc --ignoreConfig --outDir dist-server --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop server/index.ts",
-    "server:start": "node dist-server/server/index.js",
+    "server:start": "node dist-server/index.js",
     "build": "tsc -b && vite build",
+    "deploy": "bash deploy.sh",
     "lint": "oxlint",
     "preview": "vite preview"
   },

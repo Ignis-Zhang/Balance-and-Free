@@ -16,17 +16,61 @@ psql "$DATABASE_URL" -f server/schema.sql
 npm run server:dev
 ```
 
-前端默认通过 `/api` 访问后端。生产环境由 Nginx 将 `/api` 代理到 Node.js 服务。
+前端默认通过 `/api` 访问后端，生产环境由 Nginx 将 `/api` 代理到 Node.js 服务。本地开发时 Vite 未配置 `/api` 代理，需要用 `VITE_API_BASE` 指向本地后端：
+
+```bash
+VITE_API_BASE=http://localhost:3000/api npm run dev
+```
 
 ## 生产部署
 
+GitHub 只托管源码，云服务器上只放运行产物（前端静态文件 + 编译后的后端 JS），服务器不需要 `.git`。
+
+### 一键发布（推荐）
+
 ```bash
-npm run build
-npm run server:build
-scp -P 683 -r dist/. root@服务器:/var/www/work-life-balance/dist/
+./deploy.sh                   # 构建 → 上传 → 重启 → 自检
+./deploy.sh --only backend    # 只改了 server/ 时最快
+./deploy.sh --only frontend   # 只改了前端时
+./deploy.sh --no-build        # 复用现有 dist/ 与 dist-server/ 产物
+./deploy.sh --dry-run         # 只预览将执行的命令
+./deploy.sh --help
 ```
 
-服务器上的 Node.js API 应使用 `systemd` 或 PM2 常驻运行。数据库凭据、JWT_SECRET 和其他 `.env` 内容不能提交到 GitHub。
+脚本依次完成：
+
+1. 构建 `dist/` 与 `dist-server/index.js`，并**校验后端产物包含 `/api/auth/me`**；
+2. 前端上传到 `/var/www/work-life-balance/dist`（先传 `dist-next` 再原子切换，旧版保留为 `dist-prev` 便于回滚）；
+3. 后端备份为 `server/index.js.bak-<时间戳>` 后覆盖上传，并做 md5 一致性校验；
+4. `systemctl restart work-life-balance-api`；
+5. 自检 `/api/health`、`/api/auth/me`（预期 401，若为 404 说明后端版本落后会直接报错中断）以及线上前端产物与本地构建的 md5。
+
+目标机器与路径可用环境变量覆盖：`DEPLOY_HOST`、`DEPLOY_PORT`（默认 683）、`DEPLOY_USER`、`PUBLIC_URL`、`WEB_ROOT`、`API_DIR`、`SERVICE`。
+
+### 服务器现状
+
+| 项 | 值 |
+| --- | --- |
+| SSH | `ssh -p 683 root@114.214.241.56`（22 端口只在云平台内网，公网映射为 683） |
+| 前端 | Nginx 1.24，root `/var/www/work-life-balance/dist`，`/api/` 反代到 `127.0.0.1:3000` |
+| 后端 | `/opt/work-life-balance`，systemd 服务 `work-life-balance-api`（`Restart=always`，已 `enable`） |
+| 数据库 | 本机 PostgreSQL，库 `worklife`，仅监听 `127.0.0.1:5432` |
+| 配置 | `/opt/work-life-balance/.env`：`PORT`、`FRONTEND_ORIGIN`、`DATABASE_URL`、`JWT_SECRET` |
+
+### 手工发布（与脚本等价）
+
+```bash
+npm run build && npm run server:build
+scp -P 683 -r dist/. root@114.214.241.56:/var/www/work-life-balance/dist/
+scp -P 683 dist-server/index.js root@114.214.241.56:/opt/work-life-balance/server/index.js
+ssh -p 683 root@114.214.241.56 'systemctl restart work-life-balance-api'
+```
+
+> ⚠️ **前端与后端必须一起发布。** 曾经只发前端、后端仍是上一版产物，`/api/auth/me` 返回 404，前端启动时 `getCurrentUser()` 抛错并 `clearToken()`，用户一刷新页面就被强制登出。`deploy.sh` 已把这条校验固化进流程。
+
+> ⚠️ 修改端口、绑定域名或启用 HTTPS 后，要同步更新服务器 `.env` 里的 `FRONTEND_ORIGIN`，否则跨域请求会被 CORS 拒绝。
+
+> ⚠️ 数据库凭据、JWT_SECRET 及任何 `.env` 内容都不能提交到 GitHub。
 
 ## 数据与协作
 
